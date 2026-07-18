@@ -6,6 +6,7 @@ import (
 
 	"DragonMarket/internal/api"
 	"DragonMarket/internal/config"
+	"DragonMarket/internal/migrate"
 )
 
 func main() {
@@ -17,6 +18,12 @@ func main() {
 		logger.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
+
+	if err := migrate.Up(cfg.DatabaseURL); err != nil {
+		logger.Error("failed to run migrations", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("migrations applied")
 
 	router := api.NewRouter()
 

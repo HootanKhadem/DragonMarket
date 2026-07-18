@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS items;
+DROP TYPE IF EXISTS item_rarity;
