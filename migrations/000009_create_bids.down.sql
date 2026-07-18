@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS bids;
+DROP TYPE IF EXISTS bid_status;
