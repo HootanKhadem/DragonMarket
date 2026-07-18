@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dragonmarket}
+      POSTGRES_USER: ${POSTGRES_USER:-dragonmarket}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dragonmarket}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dragonmarket} -d ${POSTGRES_DB:-dragonmarket}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: ${PORT:-8080}
+      DATABASE_URL: ${DATABASE_URL:-postgres://dragonmarket:dragonmarket@postgres:5432/dragonmarket?sslmode=disable}
+      ORACLE_REFRESH_INTERVAL: ${ORACLE_REFRESH_INTERVAL:-30s}
+      AUCTION_SWEEP_INTERVAL: ${AUCTION_SWEEP_INTERVAL:-10s}
+    ports:
+      - "${APP_PORT:-8080}:${PORT:-8080}"
+
+volumes:
+  postgres_data:

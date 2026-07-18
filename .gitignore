@@ -3,3 +3,6 @@
 /.idea
 
 /.idea/DragonMarket.iml
+
+# Local environment overrides (see .env.example)
+.env
