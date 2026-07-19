@@ -4,8 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"net/url"
 	"os"
+	"regexp"
 	"runtime"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,15 +19,7 @@ import (
 )
 
 func init() {
-	// On Windows + Docker Desktop, testcontainers-go's "ryuk" reaper sidecar
-	// times out waiting to become ready (it resolves the docker socket over
-	// npipe, and its own readiness probe doesn't reliably see it), which
-	// stalls every test for ~60s before failing. Our tests already terminate
-	// their own containers via t.Cleanup, so the reaper's automatic
-	// cleanup-on-crash safety net isn't required for these tests to be
-	// correct. Gated to windows specifically (rather than disabling ryuk
-	// unconditionally for every OS/CI runner) so this workaround only kicks
-	// in on the environment that actually needs it.
+
 	if runtime.GOOS == "windows" && os.Getenv("TESTCONTAINERS_RYUK_DISABLED") == "" {
 		os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 	}
@@ -42,8 +39,13 @@ var wantTables = map[string]string{
 	"transaction_logs": "reference",
 }
 
-func startPostgres(t *testing.T) string {
-	t.Helper()
+var adminConnStr string
+
+var dbNameCounter atomic.Uint64
+
+var invalidDBNameChars = regexp.MustCompile(`[^a-zA-Z0-9_]+`)
+
+func TestMain(m *testing.M) {
 	ctx := context.Background()
 
 	container, err := postgres.Run(ctx,
@@ -54,23 +56,77 @@ func startPostgres(t *testing.T) string {
 		postgres.BasicWaitStrategies(),
 	)
 	if err != nil {
-		t.Fatalf("failed to start postgres container: %v", err)
+		fmt.Fprintf(os.Stderr, "failed to start postgres container: %v\n", err)
+		os.Exit(1)
 	}
-	t.Cleanup(func() {
-		if err := container.Terminate(context.Background()); err != nil {
-			t.Logf("failed to terminate postgres container: %v", err)
-		}
-	})
 
 	connStr, err := container.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
-		t.Fatalf("failed to get connection string: %v", err)
+		fmt.Fprintf(os.Stderr, "failed to get connection string: %v\n", err)
+		_ = container.Terminate(context.Background())
+		os.Exit(1)
 	}
-	return connStr
+	adminConnStr = connStr
+
+	code := m.Run()
+
+	if err := container.Terminate(context.Background()); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "failed to terminate postgres container: %v\n", err)
+	}
+
+	os.Exit(code)
+}
+
+func sanitizeDBName(name string) string {
+	cleaned := strings.ToLower(invalidDBNameChars.ReplaceAllString(name, "_"))
+
+	const maxBase = 40
+	if len(cleaned) > maxBase {
+		cleaned = cleaned[:maxBase]
+	}
+
+	n := dbNameCounter.Add(1)
+	return fmt.Sprintf("%s_%d", cleaned, n)
+}
+
+func freshDatabaseURL(t *testing.T) string {
+	t.Helper()
+
+	dbName := sanitizeDBName(t.Name())
+
+	adminDB, err := sql.Open("postgres", adminConnStr)
+	if err != nil {
+		t.Fatalf("open admin connection: %v", err)
+	}
+	defer adminDB.Close()
+
+	if _, err := adminDB.Exec(fmt.Sprintf(`CREATE DATABASE %s`, dbName)); err != nil {
+		t.Fatalf("create database %s: %v", dbName, err)
+	}
+
+	t.Cleanup(func() {
+		cleanupDB, err := sql.Open("postgres", adminConnStr)
+		if err != nil {
+			t.Logf("cleanup: open admin connection for DROP DATABASE %s: %v", dbName, err)
+			return
+		}
+		defer cleanupDB.Close()
+
+		if _, err := cleanupDB.Exec(fmt.Sprintf(`DROP DATABASE IF EXISTS %s WITH (FORCE)`, dbName)); err != nil {
+			t.Logf("cleanup: drop database %s: %v", dbName, err)
+		}
+	})
+
+	u, err := url.Parse(adminConnStr)
+	if err != nil {
+		t.Fatalf("parse admin connection string: %v", err)
+	}
+	u.Path = "/" + dbName
+	return u.String()
 }
 
 func TestUp_CreatesExpectedTablesAndColumns(t *testing.T) {
-	databaseURL := startPostgres(t)
+	databaseURL := freshDatabaseURL(t)
 
 	if err := Up(databaseURL); err != nil {
 		t.Fatalf("Up() error = %v", err)
@@ -101,7 +157,7 @@ func TestUp_CreatesExpectedTablesAndColumns(t *testing.T) {
 }
 
 func TestUp_ThenDown_DropsAllTables(t *testing.T) {
-	databaseURL := startPostgres(t)
+	databaseURL := freshDatabaseURL(t)
 
 	if err := Up(databaseURL); err != nil {
 		t.Fatalf("Up() error = %v", err)
@@ -134,19 +190,9 @@ func TestUp_ThenDown_DropsAllTables(t *testing.T) {
 	}
 }
 
-// --- Constraint-semantics tests -------------------------------------------
-//
-// The tests above only assert structural existence (tables/columns). These
-// tests prove the two novel DB-level enforcement mechanisms (denormalized
-// rarity + trigger + partial unique index / CHECK) actually reject the data
-// they're meant to reject, not just that the schema exists.
-
-// setupSchemaDB starts a fresh Postgres container, runs migrations up, and
-// returns a connected *sql.DB. The container and DB are cleaned up via
-// t.Cleanup.
 func setupSchemaDB(t *testing.T) *sql.DB {
 	t.Helper()
-	databaseURL := startPostgres(t)
+	databaseURL := freshDatabaseURL(t)
 
 	if err := Up(databaseURL); err != nil {
 		t.Fatalf("Up() error = %v", err)

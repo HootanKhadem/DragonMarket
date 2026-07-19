@@ -26,6 +26,15 @@ func init() {
 var testPool *pgxpool.Pool
 
 func TestMain(m *testing.M) {
+	// A bare TestMain must call os.Exit(m.Run()) itself -- if it merely
+	// returns, the test binary exits 0 ("PASS") without ever having run a
+	// single test. Delegating to runTests(m) lets us `return` from error
+	// paths (running all defers, e.g. container.Terminate/pool.Close) and
+	// still funnel every path through one os.Exit call here in TestMain.
+	os.Exit(runTests(m))
+}
+
+func runTests(m *testing.M) int {
 	ctx := context.Background()
 
 	container, err := postgres.Run(ctx,
@@ -37,30 +46,30 @@ func TestMain(m *testing.M) {
 	)
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "failed to start postgres container: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	defer func() { _ = container.Terminate(context.Background()) }()
 
 	connStr, err := container.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "failed to get connection string: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	if err := migrate.Up(connStr); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "migrate.Up() failed: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "failed to connect pgxpool: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	defer pool.Close()
 	testPool = pool
 
-	return
+	return m.Run()
 }
 
 // beginTx starts a transaction on the shared testPool and registers a
