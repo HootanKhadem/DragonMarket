@@ -169,7 +169,7 @@ func TestSeed_GoldPouches(t *testing.T) {
 // duplicate rows or error -- golang-migrate's schema_migrations tracking
 // should make the second Up() call a pure no-op.
 func TestSeed_Idempotent(t *testing.T) {
-	databaseURL := startPostgres(t)
+	databaseURL := freshDatabaseURL(t)
 
 	if err := Up(databaseURL); err != nil {
 		t.Fatalf("first Up() error = %v", err)
