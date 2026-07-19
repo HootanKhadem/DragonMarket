@@ -1,29 +1,4 @@
--- Seed data (Task 4). Populates the empty schema from Task 3 with the
--- starting data the app needs to be exercised end to end: 5 guilds, 20 lore
--- + blacksmith characters, 30 items (20 COMMON / 7 RARE / 3 LEGENDARY), an
--- inventory + gold pouch per guild, and an ACTIVE listing per non-legendary
--- item. No auctions/bids/transaction_logs rows are seeded (those only ever
--- get created via the app's endpoints, per the plan).
---
--- Idempotency: this file is a normal golang-migrate migration, so
--- golang-migrate's schema_migrations version tracking is what makes
--- re-running the app against an already-seeded database a no-op (Up() skips
--- already-applied versions) -- there is no ON CONFLICT/upsert logic here,
--- deliberately, since none is needed.
---
--- Mutual FK note: characters.guild_id -> guilds and guilds.leader_character_id
--- -> characters are mutually referential (see migration 000001's comment).
--- Each of the 5 guilds below is seeded following the order that implies:
--- insert the leader character with guild_id NULL, insert the guild
--- referencing that character, then insert the guild's second member (guild
--- already exists, no NULL dance needed) and backfill the leader's guild_id.
 
--- ---------------------------------------------------------------------------
--- 1. Lore characters + 5 guilds
--- ---------------------------------------------------------------------------
-
--- Guild 1: Vorynthax Guild (the default-guild fallback target for
--- POST /items per plan Task 8 -- name must be exactly this).
 INSERT INTO characters (name, land_of_origin, stats, guild_id) VALUES
     ('Sauron', 'Mordor', 'Str: +5, intl: +5, con: +5', NULL);
 INSERT INTO guilds (name, leader_character_id, land_of_origin)
@@ -207,8 +182,7 @@ WHERE i.name = 'Worldbreaker';
 -- 6. Listings -- one ACTIVE listing per COMMON/RARE item, mirroring its
 -- inventory row (same owning guild and quantity), so seeded listings are
 -- immediately purchasable per the plan's Global Constraints. LEGENDARY items
--- deliberately get no listing (and no auction -- those are only created via
--- POST /auctions, out of scope for this task).
+-- deliberately get no listing
 -- ---------------------------------------------------------------------------
 
 INSERT INTO listings (item_id, guild_id, quantity, base_price, status)
