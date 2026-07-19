@@ -22,42 +22,42 @@ func scalarInt(t *testing.T, db *sql.DB, query string, args ...any) int {
 func TestSeed_Guilds(t *testing.T) {
 	db := setupSchemaDB(t)
 
-	got := scalarInt(t, db, `SELECT COUNT(*) FROM guilds`)
-	if got != 5 {
-		t.Errorf("expected exactly 5 guilds, got %d", got)
+	guildCount := scalarInt(t, db, `SELECT COUNT(*) FROM guilds`)
+	if guildCount != 5 {
+		t.Errorf("expected exactly 5 guilds, got %d", guildCount)
 	}
 
-	got = scalarInt(t, db, `SELECT COUNT(*) FROM guilds WHERE name = 'Vorynthax Guild'`)
-	if got != 1 {
-		t.Errorf("expected exactly 1 guild named 'Vorynthax Guild', got %d", got)
+	vorynthaxGuildCount := scalarInt(t, db, `SELECT COUNT(*) FROM guilds WHERE name = 'Vorynthax Guild'`)
+	if vorynthaxGuildCount != 1 {
+		t.Errorf("expected exactly 1 guild named 'Vorynthax Guild', got %d", vorynthaxGuildCount)
 	}
 }
 
 func TestSeed_Characters(t *testing.T) {
 	db := setupSchemaDB(t)
 
-	got := scalarInt(t, db, `SELECT COUNT(*) FROM characters`)
-	if got != 20 {
-		t.Errorf("expected exactly 20 characters total, got %d", got)
+	characterCount := scalarInt(t, db, `SELECT COUNT(*) FROM characters`)
+	if characterCount != 20 {
+		t.Errorf("expected exactly 20 characters total, got %d", characterCount)
 	}
 
-	got = scalarInt(t, db, `SELECT COUNT(*) FROM characters WHERE guild_id IS NOT NULL`)
-	if got != 10 {
-		t.Errorf("expected exactly 10 characters with a guild, got %d", got)
+	guildedCharacterCount := scalarInt(t, db, `SELECT COUNT(*) FROM characters WHERE guild_id IS NOT NULL`)
+	if guildedCharacterCount != 10 {
+		t.Errorf("expected exactly 10 characters with a guild, got %d", guildedCharacterCount)
 	}
 
-	got = scalarInt(t, db, `SELECT COUNT(*) FROM characters WHERE guild_id IS NULL`)
-	if got != 10 {
-		t.Errorf("expected exactly 10 characters with guild_id NULL (blacksmiths), got %d", got)
+	guildlessCharacterCount := scalarInt(t, db, `SELECT COUNT(*) FROM characters WHERE guild_id IS NULL`)
+	if guildlessCharacterCount != 10 {
+		t.Errorf("expected exactly 10 characters with guild_id NULL (blacksmiths), got %d", guildlessCharacterCount)
 	}
 }
 
 func TestSeed_Items(t *testing.T) {
 	db := setupSchemaDB(t)
 
-	got := scalarInt(t, db, `SELECT COUNT(*) FROM items`)
-	if got != 30 {
-		t.Errorf("expected exactly 30 items total, got %d", got)
+	itemCount := scalarInt(t, db, `SELECT COUNT(*) FROM items`)
+	if itemCount != 30 {
+		t.Errorf("expected exactly 30 items total, got %d", itemCount)
 	}
 
 	cases := map[string]int{
@@ -66,9 +66,9 @@ func TestSeed_Items(t *testing.T) {
 		"LEGENDARY": 3,
 	}
 	for rarity, want := range cases {
-		got := scalarInt(t, db, `SELECT COUNT(*) FROM items WHERE rarity = $1`, rarity)
-		if got != want {
-			t.Errorf("expected %d %s items, got %d", want, rarity, got)
+		rarityItemCount := scalarInt(t, db, `SELECT COUNT(*) FROM items WHERE rarity = $1`, rarity)
+		if rarityItemCount != want {
+			t.Errorf("expected %d %s items, got %d", want, rarity, rarityItemCount)
 		}
 	}
 }
@@ -79,15 +79,15 @@ func TestSeed_LegendaryOwnership(t *testing.T) {
 	// Soul Reaver and Eye of the Dragon Ring must both be owned (via an
 	// inventories row) by Vorynthax Guild specifically.
 	for _, name := range []string{"Soul Reaver", "Eye of the Dragon Ring"} {
-		got := scalarInt(t, db, `
+		ownershipCount := scalarInt(t, db, `
 			SELECT COUNT(*)
 			FROM inventories inv
 			JOIN items i ON i.id = inv.item_id
 			JOIN guilds g ON g.id = inv.guild_id
 			WHERE i.name = $1 AND g.name = 'Vorynthax Guild' AND inv.quantity = 1
 		`, name)
-		if got != 1 {
-			t.Errorf("expected %q to have exactly one inventory row owned by Vorynthax Guild with quantity 1, got %d matching rows", name, got)
+		if ownershipCount != 1 {
+			t.Errorf("expected %q to have exactly one inventory row owned by Vorynthax Guild with quantity 1, got %d matching rows", name, ownershipCount)
 		}
 	}
 
@@ -102,47 +102,47 @@ func TestSeed_LegendaryOwnership(t *testing.T) {
 		t.Fatalf("expected a third legendary item, query error: %v", err)
 	}
 
-	got := scalarInt(t, db, `
+	thirdItemOwnershipCount := scalarInt(t, db, `
 		SELECT COUNT(*)
 		FROM inventories inv
 		JOIN items i ON i.id = inv.item_id
 		JOIN guilds g ON g.id = inv.guild_id
 		WHERE i.name = $1 AND g.name <> 'Vorynthax Guild' AND inv.quantity = 1
 	`, thirdName)
-	if got != 1 {
-		t.Errorf("expected third legendary item %q to have exactly one inventory row owned by a non-Vorynthax guild, got %d matching rows", thirdName, got)
+	if thirdItemOwnershipCount != 1 {
+		t.Errorf("expected third legendary item %q to have exactly one inventory row owned by a non-Vorynthax guild, got %d matching rows", thirdName, thirdItemOwnershipCount)
 	}
 
 	// Every LEGENDARY item has exactly one inventories row system-wide.
-	got = scalarInt(t, db, `
+	legendaryInventoryCount := scalarInt(t, db, `
 		SELECT COUNT(*)
 		FROM inventories inv
 		JOIN items i ON i.id = inv.item_id
 		WHERE i.rarity = 'LEGENDARY'
 	`)
-	if got != 3 {
-		t.Errorf("expected exactly 3 inventories rows for LEGENDARY items, got %d", got)
+	if legendaryInventoryCount != 3 {
+		t.Errorf("expected exactly 3 inventories rows for LEGENDARY items, got %d", legendaryInventoryCount)
 	}
 }
 
 func TestSeed_ListingsAndOutOfScopeTables(t *testing.T) {
 	db := setupSchemaDB(t)
 
-	got := scalarInt(t, db, `SELECT COUNT(*) FROM listings WHERE status = 'ACTIVE'`)
-	if got != 27 {
-		t.Errorf("expected exactly 27 ACTIVE listings, got %d", got)
+	activeListingCount := scalarInt(t, db, `SELECT COUNT(*) FROM listings WHERE status = 'ACTIVE'`)
+	if activeListingCount != 27 {
+		t.Errorf("expected exactly 27 ACTIVE listings, got %d", activeListingCount)
 	}
 
-	got = scalarInt(t, db, `SELECT COUNT(*) FROM listings`)
-	if got != 27 {
-		t.Errorf("expected exactly 27 listings total (no non-ACTIVE ones seeded), got %d", got)
+	totalListingCount := scalarInt(t, db, `SELECT COUNT(*) FROM listings`)
+	if totalListingCount != 27 {
+		t.Errorf("expected exactly 27 listings total (no non-ACTIVE ones seeded), got %d", totalListingCount)
 	}
 
 	// Out of scope for this seed: no auctions, bids, or transaction_logs.
 	for _, table := range []string{"auctions", "bids", "transaction_logs"} {
-		got := scalarInt(t, db, `SELECT COUNT(*) FROM `+table)
-		if got != 0 {
-			t.Errorf("expected 0 rows in %s, got %d", table, got)
+		emptyTableCount := scalarInt(t, db, `SELECT COUNT(*) FROM `+table)
+		if emptyTableCount != 0 {
+			t.Errorf("expected 0 rows in %s, got %d", table, emptyTableCount)
 		}
 	}
 }
@@ -150,17 +150,17 @@ func TestSeed_ListingsAndOutOfScopeTables(t *testing.T) {
 func TestSeed_GoldPouches(t *testing.T) {
 	db := setupSchemaDB(t)
 
-	got := scalarInt(t, db, `SELECT COUNT(*) FROM gold_pouches`)
-	if got != 5 {
-		t.Errorf("expected exactly 5 gold_pouches (one per guild), got %d", got)
+	goldPouchCount := scalarInt(t, db, `SELECT COUNT(*) FROM gold_pouches`)
+	if goldPouchCount != 5 {
+		t.Errorf("expected exactly 5 gold_pouches (one per guild), got %d", goldPouchCount)
 	}
 
-	got = scalarInt(t, db, `
+	invalidSpendingLimitCount := scalarInt(t, db, `
 		SELECT COUNT(*) FROM gold_pouches
 		WHERE daily_spending_limit < 2000 OR daily_spending_limit > 10000 OR daily_spending_limit % 100 <> 0
 	`)
-	if got != 0 {
-		t.Errorf("expected every gold_pouch.daily_spending_limit to be in [2000,10000] and a multiple of 100, %d rows violate this", got)
+	if invalidSpendingLimitCount != 0 {
+		t.Errorf("expected every gold_pouch.daily_spending_limit to be in [2000,10000] and a multiple of 100, %d rows violate this", invalidSpendingLimitCount)
 	}
 }
 
@@ -184,12 +184,12 @@ func TestSeed_Idempotent(t *testing.T) {
 	}
 	defer db.Close()
 
-	got := scalarInt(t, db, `SELECT COUNT(*) FROM guilds`)
-	if got != 5 {
-		t.Errorf("expected exactly 5 guilds after two Up() calls, got %d (rows duplicated)", got)
+	guildCount := scalarInt(t, db, `SELECT COUNT(*) FROM guilds`)
+	if guildCount != 5 {
+		t.Errorf("expected exactly 5 guilds after two Up() calls, got %d (rows duplicated)", guildCount)
 	}
-	got = scalarInt(t, db, `SELECT COUNT(*) FROM items`)
-	if got != 30 {
-		t.Errorf("expected exactly 30 items after two Up() calls, got %d (rows duplicated)", got)
+	itemCount := scalarInt(t, db, `SELECT COUNT(*) FROM items`)
+	if itemCount != 30 {
+		t.Errorf("expected exactly 30 items after two Up() calls, got %d (rows duplicated)", itemCount)
 	}
 }

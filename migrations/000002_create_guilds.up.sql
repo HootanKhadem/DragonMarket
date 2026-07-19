@@ -1,5 +1,5 @@
 -- guild.name is UNIQUE because the app resolves a default guild
--- ("Vorynthax Guild") by name (see plan Task 8).
+-- ("Vorynthax Guild") by name
 CREATE TABLE guilds (
     id BIGSERIAL PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
