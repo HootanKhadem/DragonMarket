@@ -7,7 +7,10 @@ import (
 )
 
 func TestHealthEndpoint_ReturnsOK(t *testing.T) {
-	router := NewRouter()
+	// Dependencies are irrelevant to /health: a zero-value Dependencies is
+	// enough, since ItemService's fields (nil pool/repos) are never invoked
+	// unless an /items route is actually hit.
+	router := NewRouter(Dependencies{})
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
