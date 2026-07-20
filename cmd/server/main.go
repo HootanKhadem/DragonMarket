@@ -12,6 +12,7 @@ import (
 	"DragonMarket/internal/migrate"
 	"DragonMarket/internal/oracle"
 	"DragonMarket/internal/repository"
+	"DragonMarket/internal/service"
 )
 
 func main() {
@@ -39,9 +40,21 @@ func main() {
 	defer pool.Close()
 
 	priceCache := startPriceOracleTicker(ctx, cfg, pool, logger)
-	_ = priceCache
 
-	router := api.NewRouter()
+	goldPouches := service.NewGoldPouchService(
+		repository.NewGoldPouchRepository(),
+		repository.NewTransactionLogRepository(),
+	)
+
+	router := api.NewRouter(api.Dependencies{
+		Pool:        pool,
+		Items:       repository.NewItemRepository(),
+		Listings:    repository.NewListingRepository(),
+		Inventories: repository.NewInventoryRepository(),
+		Guilds:      repository.NewGuildRepository(),
+		GoldPouches: goldPouches,
+		PriceCache:  priceCache,
+	})
 
 	logger.Info("starting server", "port", cfg.Port)
 	if err := router.Run(":" + cfg.Port); err != nil {
