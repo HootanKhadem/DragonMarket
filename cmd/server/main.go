@@ -42,23 +42,25 @@ func main() {
 
 	priceCache := startPriceOracleTicker(ctx, cfg, pool, logger)
 
+	goldPouchRepo := repository.NewGoldPouchRepository()
 	goldPouches := service.NewGoldPouchService(
-		repository.NewGoldPouchRepository(),
+		goldPouchRepo,
 		repository.NewTransactionLogRepository(),
 	)
 
 	startAuctionSettlementTicker(ctx, cfg, pool, goldPouches, logger)
 
 	router := api.NewRouter(api.Dependencies{
-		Pool:        pool,
-		Items:       repository.NewItemRepository(),
-		Listings:    repository.NewListingRepository(),
-		Inventories: repository.NewInventoryRepository(),
-		Guilds:      repository.NewGuildRepository(),
-		Auctions:    repository.NewAuctionRepository(),
-		Bids:        repository.NewBidRepository(),
-		GoldPouches: goldPouches,
-		PriceCache:  priceCache,
+		Pool:          pool,
+		Items:         repository.NewItemRepository(),
+		Listings:      repository.NewListingRepository(),
+		Inventories:   repository.NewInventoryRepository(),
+		Guilds:        repository.NewGuildRepository(),
+		Auctions:      repository.NewAuctionRepository(),
+		Bids:          repository.NewBidRepository(),
+		GoldPouches:   goldPouches,
+		GoldPouchRepo: goldPouchRepo,
+		PriceCache:    priceCache,
 	})
 
 	logger.Info("starting server", "port", cfg.Port)
