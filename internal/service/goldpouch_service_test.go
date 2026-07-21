@@ -102,6 +102,117 @@ func TestGoldPouchService_Reserve_RejectsWhenUsableBalanceInsufficient(t *testin
 	}
 }
 
+func TestGoldPouchService_Reserve_SucceedsWhenWithinDailyLimit(t *testing.T) {
+	tx := beginTx(t)
+	ctx := context.Background()
+	guild := createTestGuild(t, ctx, tx, "Reserve DailyLimit OK Guild")
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	createTestGoldPouch(t, ctx, tx, repository.GoldPouch{
+		GuildID:            guild.ID,
+		TotalBalance:       1000,
+		DailySpendingLimit: 100,
+		SpentToday:         80,
+		LastResetDate:      today,
+	})
+	svc := newTestService()
+
+	if err := svc.Reserve(ctx, tx, guild.ID, 20, new("listing:limit-ok")); err != nil {
+		t.Fatalf("Reserve() error = %v, want nil (80+20 == limit 100)", err)
+	}
+
+	pouch, err := repository.NewGoldPouchRepository().GetByGuildID(ctx, tx, guild.ID)
+	if err != nil {
+		t.Fatalf("GetByGuildID() error = %v", err)
+	}
+	if pouch.ReservedBalance != 20 {
+		t.Errorf("ReservedBalance = %d, want 20", pouch.ReservedBalance)
+	}
+	if pouch.SpentToday != 80 {
+		t.Errorf("SpentToday = %d, want 80 (Reserve must NOT increment SpentToday -- only Settle does)", pouch.SpentToday)
+	}
+	if pouch.UsableBalance != 980 {
+		t.Errorf("UsableBalance = %d, want 980", pouch.UsableBalance)
+	}
+
+	logs, err := repository.NewTransactionLogRepository().ListByGuildID(ctx, tx, guild.ID)
+	if err != nil {
+		t.Fatalf("ListByGuildID() error = %v", err)
+	}
+	if len(logs) != 1 || logs[0].Type != repository.TxReserve || logs[0].Amount != 20 {
+		t.Fatalf("logs = %+v, want [{Type:RESERVE Amount:20}]", logs)
+	}
+}
+
+func TestGoldPouchService_Reserve_RejectsWhenExceedsDailyLimit(t *testing.T) {
+	tx := beginTx(t)
+	ctx := context.Background()
+	guild := createTestGuild(t, ctx, tx, "Reserve DailyLimit Guild")
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	createTestGoldPouch(t, ctx, tx, repository.GoldPouch{
+		GuildID:            guild.ID,
+		TotalBalance:       1000,
+		DailySpendingLimit: 100,
+		SpentToday:         80,
+		LastResetDate:      today,
+	})
+	svc := newTestService()
+
+	err := svc.Reserve(ctx, tx, guild.ID, 30, nil)
+	if !errors.Is(err, ErrDailyLimitExceeded) {
+		t.Fatalf("Reserve() error = %v, want ErrDailyLimitExceeded", err)
+	}
+
+	pouch, err := repository.NewGoldPouchRepository().GetByGuildID(ctx, tx, guild.ID)
+	if err != nil {
+		t.Fatalf("GetByGuildID() error = %v", err)
+	}
+	if pouch.TotalBalance != 1000 || pouch.ReservedBalance != 0 || pouch.SpentToday != 80 {
+		t.Errorf("state after rejected Reserve() = %+v, want unchanged (Total=1000 Reserved=0 SpentToday=80)", pouch)
+	}
+
+	logs, err := repository.NewTransactionLogRepository().ListByGuildID(ctx, tx, guild.ID)
+	if err != nil {
+		t.Fatalf("ListByGuildID() error = %v", err)
+	}
+	if len(logs) != 0 {
+		t.Errorf("ListByGuildID() len = %d, want 0 (no log on rejected reserve)", len(logs))
+	}
+}
+
+func TestGoldPouchService_Reserve_ResetsSpentTodayAcrossUTCDayBoundary_WithoutIncrementingIt(t *testing.T) {
+	tx := beginTx(t)
+	ctx := context.Background()
+	guild := createTestGuild(t, ctx, tx, "Reserve DayBoundary Guild")
+	yesterday := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -1)
+	createTestGoldPouch(t, ctx, tx, repository.GoldPouch{
+		GuildID:            guild.ID,
+		TotalBalance:       1000,
+		DailySpendingLimit: 100,
+		SpentToday:         90, // would reject a 50-gold reserve if not reset first (90+50 > 100)
+		LastResetDate:      yesterday,
+	})
+	svc := newTestService()
+
+	if err := svc.Reserve(ctx, tx, guild.ID, 50, nil); err != nil {
+		t.Fatalf("Reserve() error = %v, want nil (lazy reset should have zeroed SpentToday first)", err)
+	}
+
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	pouch, err := repository.NewGoldPouchRepository().GetByGuildID(ctx, tx, guild.ID)
+	if err != nil {
+		t.Fatalf("GetByGuildID() error = %v", err)
+	}
+	if pouch.SpentToday != 0 {
+		t.Errorf("SpentToday = %d, want 0 (reset persisted, but Reserve must not increment it)", pouch.SpentToday)
+	}
+	if !pouch.LastResetDate.UTC().Equal(today) {
+		t.Errorf("LastResetDate = %v, want %v", pouch.LastResetDate.UTC(), today)
+	}
+	if pouch.ReservedBalance != 50 {
+		t.Errorf("ReservedBalance = %d, want 50", pouch.ReservedBalance)
+	}
+}
+
 func TestGoldPouchService_Release_RejectsWhenReservedBalanceInsufficient(t *testing.T) {
 	tx := beginTx(t)
 	ctx := context.Background()

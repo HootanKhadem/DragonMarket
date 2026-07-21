@@ -64,7 +64,7 @@ func routerWithFake(fake *fakeItemService) *gin.Engine {
 	router.POST("/items", h.Create)
 	router.GET("/items", h.List)
 	router.GET("/items/:id", h.Get)
-	router.POST("/items/:id/purchase", h.Purchase)
+	router.POST("/items/:id/purchase", validateItemIDParam(), RequireGuildID(), h.Purchase)
 	return router
 }
 
@@ -280,6 +280,31 @@ func TestItemHandlers_Purchase_MalformedGuildHeader_Returns400(t *testing.T) {
 	env := decodeErrorBody(t, rec)
 	if env.Error.Code != "INVALID_GUILD_HEADER" {
 		t.Errorf("error.code = %q, want INVALID_GUILD_HEADER", env.Error.Code)
+	}
+}
+
+// TestItemHandlers_Purchase_InvalidItemIDWinsOverMissingGuildHeader guards
+// the pre-refactor precedence: the original handler parsed the :id path
+// param BEFORE checking the X-Guild-ID header, so a malformed item ID
+// combined with a missing header produced INVALID_ITEM_ID, not
+// MISSING_GUILD_HEADER. validateItemIDParam() must run ahead of
+// RequireGuildID() in the chain to preserve that.
+func TestItemHandlers_Purchase_InvalidItemIDWinsOverMissingGuildHeader(t *testing.T) {
+	fake := &fakeItemService{}
+	router := routerWithFake(fake)
+
+	req := httptest.NewRequest(http.MethodPost, "/items/not-a-number/purchase", bytes.NewBufferString(`{"quantity":1}`))
+	req.Header.Set("Content-Type", "application/json")
+	// Deliberately no X-Guild-ID header set.
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body=%s)", rec.Code, rec.Body.String())
+	}
+	env := decodeErrorBody(t, rec)
+	if env.Error.Code != "INVALID_ITEM_ID" {
+		t.Errorf("error.code = %q, want INVALID_ITEM_ID (malformed item id should win over missing guild header)", env.Error.Code)
 	}
 }
 
