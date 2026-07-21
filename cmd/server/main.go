@@ -13,6 +13,7 @@ import (
 	"DragonMarket/internal/oracle"
 	"DragonMarket/internal/repository"
 	"DragonMarket/internal/service"
+	"DragonMarket/internal/settlement"
 )
 
 func main() {
@@ -45,6 +46,8 @@ func main() {
 		repository.NewGoldPouchRepository(),
 		repository.NewTransactionLogRepository(),
 	)
+
+	startAuctionSettlementTicker(ctx, cfg, pool, goldPouches, logger)
 
 	router := api.NewRouter(api.Dependencies{
 		Pool:        pool,
@@ -79,4 +82,19 @@ func startPriceOracleTicker(ctx context.Context, cfg config.Config, pool *pgxpoo
 	logger.Info("price oracle ticker started", "interval", cfg.OracleRefreshInterval)
 
 	return priceCache
+}
+
+func startAuctionSettlementTicker(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, goldPouches *service.GoldPouchService, logger *slog.Logger) {
+	settler := settlement.NewSettler(
+		pool,
+		repository.NewAuctionRepository(),
+		repository.NewBidRepository(),
+		repository.NewInventoryRepository(),
+		goldPouches,
+		cfg.AuctionSweepInterval,
+	)
+	settler.Logger = logger
+
+	go settler.Run(ctx)
+	logger.Info("auction settlement ticker started", "interval", cfg.AuctionSweepInterval)
 }
