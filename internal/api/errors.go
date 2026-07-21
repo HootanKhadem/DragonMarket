@@ -55,6 +55,32 @@ func writeServiceError(c *gin.Context, err error) {
 		writeError(c, http.StatusConflict, "INSUFFICIENT_RESERVED", err.Error())
 	case errors.Is(err, service.ErrDailyLimitExceeded):
 		writeError(c, http.StatusConflict, "DAILY_LIMIT_EXCEEDED", err.Error())
+	case errors.Is(err, service.ErrInvalidDuration):
+		writeError(c, http.StatusBadRequest, "INVALID_DURATION", err.Error())
+	case errors.Is(err, service.ErrItemNotLegendary):
+		writeError(c, http.StatusBadRequest, "ITEM_NOT_LEGENDARY", err.Error())
+	case errors.Is(err, service.ErrAuctionNotFound):
+		writeError(c, http.StatusNotFound, "AUCTION_NOT_FOUND", err.Error())
+	case errors.Is(err, service.ErrBidNotFound):
+		writeError(c, http.StatusNotFound, "BID_NOT_FOUND", err.Error())
+	case errors.Is(err, service.ErrNotItemOwner):
+		writeError(c, http.StatusConflict, "NOT_ITEM_OWNER", err.Error())
+	case errors.Is(err, service.ErrAuctionAlreadyExists):
+		writeError(c, http.StatusConflict, "AUCTION_ALREADY_EXISTS", err.Error())
+	case errors.Is(err, service.ErrAuctionNotActive):
+		writeError(c, http.StatusConflict, "AUCTION_NOT_ACTIVE", err.Error())
+	case errors.Is(err, service.ErrAuctionExpired):
+		writeError(c, http.StatusConflict, "AUCTION_EXPIRED", err.Error())
+	case errors.Is(err, service.ErrSelfBidNotAllowed):
+		writeError(c, http.StatusConflict, "SELF_BID_NOT_ALLOWED", err.Error())
+	case errors.Is(err, service.ErrBidTooLow):
+		writeError(c, http.StatusConflict, "BID_TOO_LOW", err.Error())
+	case errors.Is(err, service.ErrNotBidOwner):
+		writeError(c, http.StatusConflict, "NOT_BID_OWNER", err.Error())
+	case errors.Is(err, service.ErrBidNotActive):
+		writeError(c, http.StatusConflict, "BID_NOT_ACTIVE", err.Error())
+	case errors.Is(err, service.ErrBidIsHighest):
+		writeError(c, http.StatusConflict, "BID_IS_HIGHEST", err.Error())
 	default:
 		writeError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 	}

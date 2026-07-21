@@ -52,6 +52,8 @@ func main() {
 		Listings:    repository.NewListingRepository(),
 		Inventories: repository.NewInventoryRepository(),
 		Guilds:      repository.NewGuildRepository(),
+		Auctions:    repository.NewAuctionRepository(),
+		Bids:        repository.NewBidRepository(),
 		GoldPouches: goldPouches,
 		PriceCache:  priceCache,
 	})
