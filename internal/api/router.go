@@ -12,15 +12,16 @@ import (
 )
 
 type Dependencies struct {
-	Pool        *pgxpool.Pool
-	Items       repository.ItemRepository
-	Listings    repository.ListingRepository
-	Inventories repository.InventoryRepository
-	Guilds      repository.GuildRepository
-	Auctions    repository.AuctionRepository
-	Bids        repository.BidRepository
-	GoldPouches *service.GoldPouchService
-	PriceCache  *oracle.Cache
+	Pool          *pgxpool.Pool
+	Items         repository.ItemRepository
+	Listings      repository.ListingRepository
+	Inventories   repository.InventoryRepository
+	Guilds        repository.GuildRepository
+	Auctions      repository.AuctionRepository
+	Bids          repository.BidRepository
+	GoldPouches   *service.GoldPouchService
+	GoldPouchRepo repository.GoldPouchRepository
+	PriceCache    *oracle.Cache
 }
 
 func NewRouter(deps Dependencies) *gin.Engine {
@@ -49,6 +50,11 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	router.GET("/auctions/:id", auctionHandlers.Get)
 	router.POST("/items/:id/bid", auctionHandlers.PlaceBid)
 	router.DELETE("/items/:id/bid/:bid_id", auctionHandlers.CancelBid)
+
+	walletSvc := service.NewWalletService(deps.Pool, deps.Guilds, deps.GoldPouchRepo)
+	walletHandlers := NewWalletHandlers(walletSvc)
+
+	router.GET("/guilds/:id/wallet", walletHandlers.Get)
 
 	return router
 }
