@@ -17,6 +17,8 @@ type Dependencies struct {
 	Listings    repository.ListingRepository
 	Inventories repository.InventoryRepository
 	Guilds      repository.GuildRepository
+	Auctions    repository.AuctionRepository
+	Bids        repository.BidRepository
 	GoldPouches *service.GoldPouchService
 	PriceCache  *oracle.Cache
 }
@@ -36,6 +38,17 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	router.GET("/items", itemHandlers.List)
 	router.GET("/items/:id", itemHandlers.Get)
 	router.POST("/items/:id/purchase", itemHandlers.Purchase)
+
+	auctionSvc := service.NewAuctionService(
+		deps.Pool, deps.Auctions, deps.Bids, deps.Items, deps.Inventories, deps.GoldPouches, deps.PriceCache,
+	)
+	auctionHandlers := NewAuctionHandlers(auctionSvc)
+
+	router.POST("/auctions", auctionHandlers.Create)
+	router.GET("/auctions", auctionHandlers.List)
+	router.GET("/auctions/:id", auctionHandlers.Get)
+	router.POST("/items/:id/bid", auctionHandlers.PlaceBid)
+	router.DELETE("/items/:id/bid/:bid_id", auctionHandlers.CancelBid)
 
 	return router
 }
