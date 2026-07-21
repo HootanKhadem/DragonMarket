@@ -87,15 +87,7 @@ func newBidResponse(v service.BidView) bidResponse {
 // --- handlers ---
 
 func (h *AuctionHandlers) Create(c *gin.Context) {
-	guildID, err := guildIDFromHeader(c)
-	switch {
-	case errors.Is(err, errMissingGuildHeader):
-		writeError(c, http.StatusBadRequest, "MISSING_GUILD_HEADER", err.Error())
-		return
-	case errors.Is(err, errInvalidGuildHeader):
-		writeError(c, http.StatusBadRequest, "INVALID_GUILD_HEADER", err.Error())
-		return
-	}
+	guildID := guildIDFromContext(c)
 
 	var req createAuctionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -154,15 +146,7 @@ func (h *AuctionHandlers) PlaceBid(c *gin.Context) {
 		return
 	}
 
-	guildID, err := guildIDFromHeader(c)
-	switch {
-	case errors.Is(err, errMissingGuildHeader):
-		writeError(c, http.StatusBadRequest, "MISSING_GUILD_HEADER", err.Error())
-		return
-	case errors.Is(err, errInvalidGuildHeader):
-		writeError(c, http.StatusBadRequest, "INVALID_GUILD_HEADER", err.Error())
-		return
-	}
+	guildID := guildIDFromContext(c)
 
 	var req placeBidRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -196,15 +180,7 @@ func (h *AuctionHandlers) CancelBid(c *gin.Context) {
 		return
 	}
 
-	guildID, err := guildIDFromHeader(c)
-	switch {
-	case errors.Is(err, errMissingGuildHeader):
-		writeError(c, http.StatusBadRequest, "MISSING_GUILD_HEADER", err.Error())
-		return
-	case errors.Is(err, errInvalidGuildHeader):
-		writeError(c, http.StatusBadRequest, "INVALID_GUILD_HEADER", err.Error())
-		return
-	}
+	guildID := guildIDFromContext(c)
 
 	if err := h.svc.CancelBid(c.Request.Context(), service.CancelBidInput{
 		ItemID:  itemID,

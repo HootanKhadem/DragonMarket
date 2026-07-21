@@ -62,11 +62,11 @@ func (f *fakeAuctionService) CancelBid(ctx context.Context, in service.CancelBid
 func routerWithFakeAuctions(fake *fakeAuctionService) *gin.Engine {
 	h := NewAuctionHandlers(fake)
 	router := gin.New()
-	router.POST("/auctions", h.Create)
+	router.POST("/auctions", RequireGuildID(), h.Create)
 	router.GET("/auctions", h.List)
 	router.GET("/auctions/:id", h.Get)
-	router.POST("/items/:id/bid", h.PlaceBid)
-	router.DELETE("/items/:id/bid/:bid_id", h.CancelBid)
+	router.POST("/items/:id/bid", validateItemIDParam(), RequireGuildID(), h.PlaceBid)
+	router.DELETE("/items/:id/bid/:bid_id", validateItemIDParam(), validateBidIDParam(), RequireGuildID(), h.CancelBid)
 	return router
 }
 
@@ -269,6 +269,31 @@ func TestAuctionHandlers_PlaceBid_MissingGuildHeader_Returns400(t *testing.T) {
 	}
 }
 
+// TestAuctionHandlers_PlaceBid_InvalidItemIDWinsOverMissingGuildHeader
+// reproduces the exact repro the reviewer flagged: POST /items/notanumber/bid
+// with no X-Guild-ID header. Before the middleware refactor, PlaceBid parsed
+// the :id path param before checking the header, so this returned
+// INVALID_ITEM_ID. validateItemIDParam() must run ahead of RequireGuildID()
+// to preserve that precedence.
+func TestAuctionHandlers_PlaceBid_InvalidItemIDWinsOverMissingGuildHeader(t *testing.T) {
+	fake := &fakeAuctionService{}
+	router := routerWithFakeAuctions(fake)
+
+	req := httptest.NewRequest(http.MethodPost, "/items/not-a-number/bid", bytes.NewBufferString(`{"amount":100}`))
+	req.Header.Set("Content-Type", "application/json")
+	// Deliberately no X-Guild-ID header set.
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body=%s)", rec.Code, rec.Body.String())
+	}
+	env := decodeErrorBody(t, rec)
+	if env.Error.Code != "INVALID_ITEM_ID" {
+		t.Errorf("error.code = %q, want INVALID_ITEM_ID (malformed item id should win over missing guild header)", env.Error.Code)
+	}
+}
+
 func TestAuctionHandlers_PlaceBid_InvalidJSON_Returns400(t *testing.T) {
 	fake := &fakeAuctionService{}
 	router := routerWithFakeAuctions(fake)
@@ -297,6 +322,7 @@ func TestAuctionHandlers_PlaceBid_ServiceErrorMapping(t *testing.T) {
 		{"self bid", service.ErrSelfBidNotAllowed, http.StatusConflict, "SELF_BID_NOT_ALLOWED"},
 		{"bid too low", service.ErrBidTooLow, http.StatusConflict, "BID_TOO_LOW"},
 		{"insufficient balance", service.ErrInsufficientBalance, http.StatusConflict, "INSUFFICIENT_BALANCE"},
+		{"daily limit exceeded", service.ErrDailyLimitExceeded, http.StatusConflict, "DAILY_LIMIT_EXCEEDED"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -362,6 +388,50 @@ func TestAuctionHandlers_CancelBid_MissingGuildHeader_Returns400(t *testing.T) {
 	env := decodeErrorBody(t, rec)
 	if env.Error.Code != "MISSING_GUILD_HEADER" {
 		t.Errorf("error.code = %q, want MISSING_GUILD_HEADER", env.Error.Code)
+	}
+}
+
+// TestAuctionHandlers_CancelBid_InvalidItemIDWinsOverMissingGuildHeader
+// guards the same precedence for CancelBid's :id path param: originally
+// parsed before the header check, so it must still win over a missing
+// header now that the check is middleware.
+func TestAuctionHandlers_CancelBid_InvalidItemIDWinsOverMissingGuildHeader(t *testing.T) {
+	fake := &fakeAuctionService{}
+	router := routerWithFakeAuctions(fake)
+
+	req := httptest.NewRequest(http.MethodDelete, "/items/not-a-number/bid/5", nil)
+	// Deliberately no X-Guild-ID header set.
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body=%s)", rec.Code, rec.Body.String())
+	}
+	env := decodeErrorBody(t, rec)
+	if env.Error.Code != "INVALID_ITEM_ID" {
+		t.Errorf("error.code = %q, want INVALID_ITEM_ID (malformed item id should win over missing guild header)", env.Error.Code)
+	}
+}
+
+// TestAuctionHandlers_CancelBid_InvalidBidIDWinsOverMissingGuildHeader
+// guards the same precedence for CancelBid's :bid_id path param: originally
+// parsed before the header check (after the item id), so it must still win
+// over a missing header now that the check is middleware.
+func TestAuctionHandlers_CancelBid_InvalidBidIDWinsOverMissingGuildHeader(t *testing.T) {
+	fake := &fakeAuctionService{}
+	router := routerWithFakeAuctions(fake)
+
+	req := httptest.NewRequest(http.MethodDelete, "/items/1/bid/not-a-number", nil)
+	// Deliberately no X-Guild-ID header set.
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body=%s)", rec.Code, rec.Body.String())
+	}
+	env := decodeErrorBody(t, rec)
+	if env.Error.Code != "INVALID_BID_ID" {
+		t.Errorf("error.code = %q, want INVALID_BID_ID (malformed bid id should win over missing guild header)", env.Error.Code)
 	}
 }
 

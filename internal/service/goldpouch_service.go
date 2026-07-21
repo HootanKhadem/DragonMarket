@@ -41,6 +41,15 @@ func (s *GoldPouchService) Reserve(ctx context.Context, tx pgx.Tx, guildID int64
 		return ErrInsufficientBalance
 	}
 
+	today := utcMidnight(time.Now())
+	if !sameUTCDate(gp.LastResetDate, today) {
+		gp.SpentToday = 0
+		gp.LastResetDate = today
+	}
+	if gp.SpentToday+amount > gp.DailySpendingLimit {
+		return ErrDailyLimitExceeded
+	}
+
 	gp.ReservedBalance += amount
 	if err := s.pouches.Update(ctx, tx, gp); err != nil {
 		return fmt.Errorf("service: reserve: update pouch: %w", err)

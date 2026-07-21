@@ -161,15 +161,7 @@ func (h *ItemHandlers) Purchase(c *gin.Context) {
 		return
 	}
 
-	guildID, err := guildIDFromHeader(c)
-	switch {
-	case errors.Is(err, errMissingGuildHeader):
-		writeError(c, http.StatusBadRequest, "MISSING_GUILD_HEADER", err.Error())
-		return
-	case errors.Is(err, errInvalidGuildHeader):
-		writeError(c, http.StatusBadRequest, "INVALID_GUILD_HEADER", err.Error())
-		return
-	}
+	guildID := guildIDFromContext(c)
 
 	var req purchaseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -210,27 +202,4 @@ func parseLimitOffset(c *gin.Context) (int, int) {
 	limit, _ := strconv.Atoi(c.Query("limit"))
 	offset, _ := strconv.Atoi(c.Query("offset"))
 	return limit, offset
-}
-
-// guildIDFromHeader is a small local helper reading the acting guild from
-// the X-Guild-ID request header, per the plan's note that Task 12
-// (X-Guild-ID + error-envelope middleware) hasn't landed yet: each handler
-// task (8, 9, 11) is told to carry its own copy until it does. When Task 12
-// lands, this and writeError/writeServiceError in errors.go are the two
-// things it should consolidate into shared middleware.
-var (
-	errMissingGuildHeader = errors.New("X-Guild-ID header is required")
-	errInvalidGuildHeader = errors.New("X-Guild-ID header must be a positive integer")
-)
-
-func guildIDFromHeader(c *gin.Context) (int64, error) {
-	raw := c.GetHeader("X-Guild-ID")
-	if raw == "" {
-		return 0, errMissingGuildHeader
-	}
-	id, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil || id <= 0 {
-		return 0, errInvalidGuildHeader
-	}
-	return id, nil
 }
